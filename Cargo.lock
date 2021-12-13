@@ -46,6 +46,10 @@ name = "day9-1"
 version = "0.1.0"
 
 [[package]]
+name = "day9-2"
+version = "0.1.0"
+
+[[package]]
 name = "memoise"
 version = "0.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
