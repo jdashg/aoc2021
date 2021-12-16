@@ -84,6 +84,9 @@ dependencies = [
 [[package]]
 name = "day16-2"
 version = "0.1.0"
+dependencies = [
+ "bitreader",
+]
 
 [[package]]
 name = "day4-2"
