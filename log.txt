@@ -1,0 +1,20 @@
+
+
+
+
+
+
+
+
+
+
+initial_state:
+#############
+#...........#
+###A#B#C#D###
+  #A#B#C#D#
+  #########
+found A at (3, 2)
+found A at (3, 3)
+found A at (2, 1)
+found A at (3, 3)
