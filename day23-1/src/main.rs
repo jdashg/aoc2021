@@ -7,6 +7,7 @@ use std::collections::HashMap;
 use std::collections::BTreeMap;
 use std::collections::BTreeSet;
 use std::collections::BinaryHeap;
+use std::{thread, time};
 
 struct Graph {
    neighbor_costs_by_from: HashMap<Coord,Vec<(Coord,i64)>>,
@@ -24,6 +25,7 @@ impl Graph {
       self.add_directed_edge(from_and_to, to_and_from, cost);
       self.add_directed_edge(to_and_from, from_and_to, cost);
    }
+
 }
 
 
@@ -33,6 +35,14 @@ const MARKED_MAP: &str = "\
 ###A#B#C#D###
   #a#b#c#d#
   #########";
+
+fn all_coords() -> Vec<Coord> {
+   let coord_by_char: HashMap<char,Coord> = rough_parse(MARKED_MAP)
+      .into_iter().map(|(coord,c)| {
+         (c, coord)
+      }).collect();
+   coord_by_char.into_iter().map(|(c,coord)| coord).collect()
+}
 
 fn make_house_graph() -> Graph {
    let mut graph = Graph::new();
@@ -100,7 +110,8 @@ const BLANK_MAP: &str = "\
 #...........#
 ###.#.#.#.###
   #.#.#.#.#
-  #########";
+  #########
+0123456789012";
 
 #[derive(Clone,PartialEq,Eq,Hash,PartialOrd,Ord)]
 struct PositionState {
@@ -124,14 +135,14 @@ impl PositionState {
       let dist = if from.0 == to.0 {
          manhat_dist(from,to)
       } else {
-         let from_hallway = (from.x, 1);
-         let to_hallway = (to.x, 1);
-         manhat_dist(from, from_hallway) +
-            manhat_dist(from_hallway, to_hallway) +
-            manhat_dist(to_hallway, to)
-      }
+         let from_hallway = (from.0, 1);
+         let to_hallway = (to.0, 1);
+         manhat_dist(from, &from_hallway) +
+            manhat_dist(&from_hallway, &to_hallway) +
+            manhat_dist(&to_hallway, to)
+      };
       let mut cost = dist;
-      cost *= *who as i64;
+      cost *= who as i64;
       (next, cost)
    }
    fn est_cost_remaining(&self) -> i64 {
@@ -257,9 +268,8 @@ impl<V,P> PriorityMap<V,P>
    }
 }
 
-fn gather_valid_moves(from: &Coord, state: &PositionState,
-         graph: &Graph) -> Vec<(Coord,i64)> {
-   let mut ret: Vec<(PositionState,i64)> = Vec::new();
+fn gather_valid_moves(from: &Coord, state: &PositionState) -> Vec<(PositionState,i64)> {
+   let mut try_coords: Vec<Coord> = Vec::new();
 
    let mover = state.occupant_by_node.get(from).unwrap();
    let destination_x = match mover {
@@ -270,90 +280,114 @@ fn gather_valid_moves(from: &Coord, state: &PositionState,
    };
 
    // -
-   // Always try to get to destination room
-   {
-      let mut destination_contains_others = false;
-      for to_y in 2..=3 {
-         let to = (destination_x,to_y);
+
+   if SPEW {
+      println!("gather_valid_moves({:?})\n{}", from, state.to_string());
+   }
+
+   const HALLWAY_X_LIST: [i64; 7] = [1,2,4,6,8,10,11];
+   let in_hallway = from.1 == 1;
+   let in_destination = from.0 == destination_x;
+
+   if SPEW { println!("in_hallway: {}", in_hallway); }
+   if SPEW { println!("in_destination: {}", in_destination); }
+   if !in_hallway {
+      let front_of_room = (from.0, 2 as i64);
+      let back_of_room = (from.0, 3 as i64);
+      if in_destination {
+         if *from == back_of_room {
+            if SPEW { println!("no reason to leave"); }
+            return vec![]; // No reason to leave
+         }
+         // So we must be in front_of_room!
+         // Anyone in back?
          if let Some(body) = // Shrek'd.
-               state.occupant_by_node.get(&to) {
-            if body != mover {
-               destination_contains_others = true;
-               break;
+               state.occupant_by_node.get(&back_of_room) {
+            if body == mover {
+               return vec![]; // We're all friends here
             }
          }
-      }
-      if !destination_contains_others {
-         for to_y in 2..=3 {
-            let to = (destination_x,to_y);
-            if !state.occupant_by_node.contains_key(&to) {
-               ret.push(state.mov(from, to))
+         // Maybe try to go deeper?
+         try_coords.push(back_of_room);
+
+         // we have access to hallway
+      } else {
+         // Can we get to the hallway?
+         if *from == back_of_room {
+            if state.occupant_by_node.contains_key(&front_of_room) {
+               return vec![]; // Trapped!
             }
+         }
+
+         // we have access to hallway
+      }
+      try_coords.extend(HALLWAY_X_LIST.iter().map(|to_x| (*to_x, 1 as i64)));
+   }
+   // We are in the hallway, or have access to it.
+
+   if !in_destination {
+      let front_of_room = (destination_x, 2 as i64);
+      let back_of_room = (destination_x, 3 as i64);
+
+      if !state.occupant_by_node.contains_key(&front_of_room) {
+         // Cool, unless there's a Stranger in here.
+         if let Some(other) = state.occupant_by_node.get(&back_of_room) {
+            if *other == *mover {
+               try_coords.push(front_of_room);
+            } else {
+               // Stranger, do not enter!
+            }
+         } else {
+            // Both Empty.
+            try_coords.push(front_of_room);
+            try_coords.push(back_of_room);
          }
       }
    }
-   // Can we move in the same room even if it's the wrong one?
-   if from.1 > 1 && // not in the hallway
-         from.0 != destination_x { // but the wrong room
-      // Try to leave
-      let to = (from.0,2);
-      if !state.occupant_by_node.contains_key(&to) {
-         ret.push(state.mov(from, to))
-      }
 
-
-      // We can move through people in the hallway.
-      // "#12.3.4.5.67#"
-      //  012345678901
-      let hallway_x_list = [1,2,4,6,8,10,11];
-      for to_x in hallway_x_list.iter() {
-         let to = (hallway_x,1);
-         if !state.occupant_by_node.contains_key(&to) {
-            ret.push(state.mov(from, to))
-         }
+   if SPEW {
+      println!("From {:?}:\n{}", from, state.to_string());
+   }
+   let mut left_end = 0;
+   let mut right_end = 12;
+   for hallway_person in state.occupant_by_node.iter()
+            .map(|(coord,_)| coord)
+            .filter(|coord| *coord != from && coord.1 == 1) {
+      if hallway_person.0 < from.0 {// left
+         left_end = cmp::max(left_end, hallway_person.0);
+      } else {// right
+         right_end = cmp::min(right_end, hallway_person.0);
       }
    }
-}
-
-/*
-   for (to, move_dist) in graph.neighbor_costs_by_from.get(from)
-            .unwrap().iter() {
-      if from.1 == to.1 {
-         continue; // No milling in the hallway
-      }
-      if state.occupant_by_node.contains_key(to) {
-         continue; // Someone already there
-      }
-      if from.1 == 1 { // from hallway into room
-         let destination_room = match mover {
-            Amphipod::A => 3,
-            Amphipod::B => 5,
-            Amphipod::C => 7,
-            Amphipod::D => 9,
-         };
-         if to.0 != destination_room {
-            continue; // That's not my room.
-         }
-         let mut contains_others = false;
-         for check_y in 2..=3 {
-            if let Some(body) = // Shrek'd.
-                  state.occupant_by_node.get(to) {
-               if body != mover {
-                  contains_others = true;
-                  break;
-               }
-            }
-         }
-         if contains_others {
-            continue;  // Gotta wait until The Others clear out.
-         }
-      }
-      let our_cost = move_dist * (*mover as i64);
-      ret.push((*to,our_cost));
+   if SPEW {
+      println!("  ends: {} {}", left_end, right_end);
+      println!("  try_coords: {:?}", try_coords);
    }
+
+   let next_coords: Vec<Coord> = try_coords.into_iter().filter(|to| {
+      if to.0 <= left_end || right_end <= to.0 {
+         return false;
+      }
+      if state.occupant_by_node.contains_key(&to) {
+         return false;
+      }
+      true
+   }).collect();
+   if SPEW {
+      println!("  next_coords: {:?}", next_coords);
+   }
+
+   let ret: Vec<(PositionState,i64)> = next_coords.into_iter().map(|to| {
+      state.mov(from, &to)
+   }).collect();
+
+   // -
+
    ret
 }
-*/
+
+const SPEW: bool = false;
+
 // "What is the least energy required to organize the amphipods?"
 fn solve(input: &str) -> i64 {
    let graph = make_house_graph();
@@ -369,58 +403,50 @@ fn solve(input: &str) -> i64 {
    let mut fringe: PriorityMap<PositionState, i64> = PriorityMap::new();
    cost_by_state.insert(initial_pstate.clone(), 0);
    fringe.insert(initial_pstate.clone(), 0);
-   let mut i = 10;
-   while let Some((state,est)) = fringe.pop_min() {
+   let mut ii = 1..;
+   while let Some((state,_)) = fringe.pop_min() {
       if state == goal_state {
          break;
       }
 
-      if i == 0 {
+      let i = ii.next().unwrap();
+      if SPEW || i % 1000 <= 1 {
+         println!("\n[{}] Popping one from among {}:", i, fringe.len());
+         println!("{}", state.to_string());
          //panic!("stop there");
       }
-      i -= 1;
+      if i >= 10 {
+         //panic!("stop there");
+      }
 
-      println!("");
-      println!("");
-      println!("Popping {} from among {}...", est, fringe.len());
-      println!("{}", state.to_string());
+      //println!("");
+      //println!("");
+      //println!("Popping {} from among {}...", est, fringe.len());
+      //println!("{}", state.to_string());
       let cur_cost = *cost_by_state.get(&state).unwrap();
       for (from,_) in state.occupant_by_node.iter() {
-         let valid_moves = gather_valid_moves(from, &state, &graph);
-         for (to,move_cost) in valid_moves {
-            let new_state = state.mov(from, &to);
-            let new_cost = cur_cost + move_cost;
+         let valid_moves = gather_valid_moves(from, &state);
+         for (new_state,additional_cost) in valid_moves {
+            let new_cost = cur_cost + additional_cost;
+
+            if SPEW {
+               println!("   new_state:\n{}", new_state.to_string());
+            }
 
             let e = cost_by_state.entry(new_state.clone())
                   .or_insert(new_cost+1); // Always "find" a new min!
+
+            if SPEW {
+               println!("  new_cost {}, current best: {}", new_cost, *e);
+            }
             if new_cost < *e {
                *e = new_cost;
                let cost_remaining = new_state.est_cost_remaining();
-               println!("      estimated cost: {}", cost_remaining);
+               //println!("      estimated cost: {}", cost_remaining);
                let est_total_cost = new_cost + cost_remaining;
                fringe.insert(new_state, est_total_cost);
             }
          }
-         /*
-         let neighbor_costs = graph.neighbor_costs_by_from.get(from).unwrap();
-         for (to,dist) in neighbor_costs.iter() {
-            if let Some((next_state, move_cost))
-                        = state.move_n(from, to, *dist) {
-               let next_cost = cur_cost + move_cost;
-               //println!("   for {}+{} cost:\n{}", cur_cost, move_cost,
-               //  next_state.to_string());
-               let e = cost_by_state.entry(next_state.clone())
-                     .or_insert(next_cost+1); // Always "find" a new min!
-               if next_cost < *e {
-                  *e = next_cost;
-                  let cost_remaining = next_state.est_cost_remaining();
-                  //println!("      estimated cost: {}", cost_remaining);
-                  let est_total_cost = next_cost + cost_remaining;
-                  fringe.insert(next_state, est_total_cost);
-               }
-            }
-         }
-         */
       }
    }
 
@@ -492,10 +518,27 @@ fn test_example() {
   #A#B#C#D#
   #########
 ";
-   println!("est_cost_remaining ok");
-   assert_eq!(solve(&input), 2);
+   //assert_eq!(solve(&input), 8010);
 
-   panic!("ok");
+   let input = "\
+#############
+#.D.........#
+###.#B#C#D###
+  #A#B#C#A#
+  #########
+";
+   assert_eq!(solve(&input), 13009);
+   //panic!("good!");
+   // -
+   let input = "\
+#############
+#...........#
+###D#B#C#D###
+  #A#B#C#A#
+  #########
+";
+   assert_eq!(solve(&input), 13011);
+   //panic!("good!");
    // -
 
    let input = "\
@@ -506,11 +549,13 @@ fn test_example() {
   #########
 ";
    assert_eq!(solve(&input), 12521);
+   //panic!("good!!");
 }
 
 fn main() {
    test_example();
    println!("Examples ran clean!");
+   thread::sleep(time::Duration::from_millis(1000));
 
    let path = Path::new("day23-1/input.txt");
    let mut file = match File::open(&path) {
