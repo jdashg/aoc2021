@@ -1,0 +1,339 @@
+inp w
+mul x 0             x = 0
+add x z             x = z
+mod x 26            x = z%26
+div z 1          z /= A   can defer, A in [1, 26], 7 of each, [1,1,1,1,26,26,26,1,1,26,26,26,1,26]
+add x 13            x = z%26 + B           B in [-16 ..= 15]
+eql x w
+eql x 0             xa<B=13>(w,z%26) = (z%26 + B != w)
+mul y 0             y = 0
+add y 25            y = 25
+mul y x             y = 25 * xa
+add y 1             ya = 25 * xa + 1
+mul z y          z *= ya
+mul y 0             y = 0
+add y w             y = w
+add y 5             y = w + C         C in [2 ..= 16]
+mul y x             y = (w + C) * xa
+add z y          z += yb
+
+
+Each input:
+  xa = (z%26 + B != w) // alt. z%26 != w-B
+  z /= A
+  z *= 25 * xa + 1
+  z += (w + C) * xa
+
+Each input:
+  xa = (z%26 + B != w)
+  z /= A
+  if xa {
+    z *= 26    // 25 * xa=1 + 1
+    z += w + C // (w + C) * xa=1
+  } else {
+    z *= 1 // 25 * xa=0 + 1  (nop)
+    z += 0 // (w + C) * xa=0 (nop)
+  }
+
+Each input:
+  // B = [13,15,15,11,
+  //      -16,-11,-6,
+  //      11,10,
+  //      -10,-8,-11,
+  //      12,
+  //      -15]
+  xa = (z%26 + Bi != Wi) or (z%26 != Wi - Bi)
+  // xa is always 1 for any Bi >= 10.
+  // For us, our xa can only be 0 for some negative Bi.
+  z[i+1] = z[i] / Ai
+  if xa {
+    // This is probably bad, except if A[i+1] is 26?
+    // 7 1s, 7 26s, so 10_000_000 if we have to brute-force either?
+    // A = [1,1,1,1,26,26,26,1,1,26,26,26,1,26]
+    z[i+1] *= 26
+    z[i+1] += Wi + Ci // always both positive => always increases z
+  }
+
+      A  ,   B  ,  C
+ 0:   1  ,  13  ,  5
+ 1:   1  ,  15  , 14
+ 2:   1  ,  15  , 15
+ 3:   1  ,  11  , 16
+ 4:  26  , -16  ,  8
+ 5:  26  , -11  ,  9
+ 6:  26  , - 6  ,  2
+ 7:   1  ,  11  , 13
+ 8:   1  ,  10  , 16
+ 9:  26  , -10  ,  6
+10:  26  , - 8  ,  6
+11:  26  , -11  ,  9
+12:   1  ,  12  , 11
+13:  26  , -15  ,  5
+
+A ==  1 iff B in [ 10 ..= 15], also C in [5, 11 ..= 16]
+A == 26 iff B in [-16 ..=  6], also C in [2 ..= 9]
+
+Each input, A:1:
+  xa = (z%26 + B != w)
+  if xa {
+    z *= 26
+    z += w + C // Range for W+C if B<0 is [6 ..= 25]
+               // If the goal is to keep W+C < 26, they all work.
+  }
+
+Each input, A:26:
+  xa = (z%26 + B != w) => pick Wi = z%26 + Bi
+  z /= 26
+  if xa {
+    z *= 26
+    z += w + C      // if can't pick Wi above, pick Wi = 25-Ci?
+  }
+
+
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 1
+add x 15
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 14
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 1
+add x 15
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 15
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 1
+add x 11
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 16
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 26
+add x -16
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 8
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 26
+add x -11
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 9
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 26
+add x -6
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 2
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 1
+add x 11
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 13
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 1
+add x 10
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 16
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 26
+add x -10
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 6
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 26
+add x -8
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 6
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 26
+add x -11
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 9
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 1
+add x 12
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 11
+mul y x
+add z y
+
+inp w
+mul x 0
+add x z
+mod x 26
+div z 26
+add x -15
+eql x w
+eql x 0
+mul y 0
+add y 25
+mul y x
+add y 1
+mul z y
+mul y 0
+add y w
+add y 5
+mul y x
+add z y
