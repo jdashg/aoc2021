@@ -7,7 +7,7 @@ use std::collections::BTreeSet;
 use std::collections::BTreeMap;
 use std::{thread, time};
 
-#[derive(PartialEq,Eq,Clone,Debug,Hash)]
+#[derive(PartialEq,Eq,Clone,Debug,Hash,PartialOrd,Ord)]
 struct AluState {
    register_by_name: BTreeMap<char,i64>,
 }
@@ -388,12 +388,16 @@ fn main() {
    }
    println!("{} states remain!", states.len());
 
-   let highest = states.iter().map(|(input,_)| input).max().unwrap();
-   println!("highest {}-digit: {}", highest.len(), highest);
+   let highest = states.iter().max().unwrap();
+   println!("highest {}-digit: {}\n{}",
+   highest.0.len(), highest.0, highest.1.to_string());
 
    let lowest = states.iter().map(|(input,_)| input).min().unwrap();
    println!("lowest {}-digit: {}", lowest.len(), lowest);
 
+   for (input,state) in states.iter() {
+      assert_eq!(state.get('z'), 0, "{}", state.to_string());
+   }
 
 
    //crack(&subprogs[subprogs.len()-1], 0);
